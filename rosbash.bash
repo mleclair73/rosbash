@@ -43,7 +43,13 @@ rosprompt() {
     # Extract top folder last componentent
     ROSPATHNAME=`(roscd;cd ..; pwd | sed -e "s/.*\///g"  )`
 
-    export PS1='\[\033[0;31m\]${ROS_DISTRO[@]:0:1} \[\033[0;37m\]$(hostname) \[\033[0;34m\]$ROSPATHNAME\[\033[33m\]$(parse_git_branch)\[\033[0;32m\]@$MASTER\[\033[0m\]:\[\033[0;36m\]\w\[\033[0m\]\[\033[00m\]> '
+    if ! { [ "$TERM" = "screen" ] && [ -n "$TMUX" ]; };
+    then
+        export _GIT_BRANCH=$(parse_git_branch);
+    else
+        export _END="\n";
+    fi
+    export PS1='\[\033[0;31m\]${ROS_DISTRO[@]:0:1} \[\033[0;34m\]$ROSPATHNAME\[\033[33m\]$_GIT_BRANCH\[\033[0;32m\]@$MASTER\[\033[0m\]:\[\033[0;36m\]\w\[\033[0m\]\[\033[00m\]'$_END'> '
 }
 
 toggle-hostname() {
@@ -207,7 +213,7 @@ install-rosbash() {
 }
 
 # Generate deb files for all private packages in repo; installs them
-all-todeb() {
+timed-all-todeb() {
     # Remember current dir
     local ORIG_DIR="$(pwd)"
     roscd && cd ..
@@ -222,7 +228,8 @@ all-todeb() {
         local NUM_BUILT=$(wc -l < /run/built_pkgs.txt)
         ALL_BUILT=1
         for p in $(catkin list --quiet -u | grep -Fxv -f /run/built_pkgs.txt); do
-            todeb-noinject $p
+            _ts=$(date +%s%N)
+            todeb $p
             if (( $? )); then
                 ALL_BUILT=0
             else
@@ -231,6 +238,8 @@ all-todeb() {
                 echo $p | sudo tee -a /run/built_pkgs.txt
                 cd -
             fi
+            _tt=$((($(date +%s%N) - $_ts)/1000000))
+            echo "Catkin-make:$_tt milliseconds" >> ~/profile.txt
         done
         if [ $NUM_BUILT -eq $(wc -l < /run/built_pkgs.txt) ]; then
             echo All packages cannot be built. Ending construction...
@@ -238,6 +247,7 @@ all-todeb() {
             break
         fi
     done
+
     if (( $SUCCESS )); then
         echo All packages built and installed successfully.
     else
